@@ -3,3 +3,5 @@ deepspeech
 pyannote.audio
 numpy 
 google-generativeai
+openai-whisper
+ffmpeg 
