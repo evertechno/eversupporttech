@@ -1,12 +1,13 @@
 import streamlit as st
 import numpy as np
-import librosa
 import pandas as pd
 from deepspeech import Model
 import wave
 import os
 from transformers import pipeline
 import urllib.request
+import subprocess
+import sys
 
 # Set up Hugging Face for text summarization and sentiment analysis
 summarizer = pipeline("summarization")
@@ -26,6 +27,16 @@ def download_model(model_url, model_path):
         st.write(f"Downloading model from {model_url}...")
         urllib.request.urlretrieve(model_url, model_path)
         st.write("Download complete!")
+
+# Ensure 'librosa' is installed if not already
+def install_package(package):
+    subprocess.check_call([sys.executable, "-m", "pip", "install", package])
+
+try:
+    import librosa
+except ImportError:
+    install_package("librosa")
+    import librosa
 
 def load_deepspeech_model():
     # Ensure the model is downloaded
