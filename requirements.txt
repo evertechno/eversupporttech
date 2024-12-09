@@ -1,6 +1,6 @@
 streamlit
-openai-whisper
+deepspeech
 transformers
-torch
 pandas
-scipy
+numpy
+librosa
