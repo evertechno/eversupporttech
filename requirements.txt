@@ -1,1 +1,5 @@
 streamlit
+deepspeech 
+pyannote.audio
+numpy 
+google-generativeai
