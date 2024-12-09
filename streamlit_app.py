@@ -1,10 +1,12 @@
 import streamlit as st
 import numpy as np
 import pandas as pd
-from deepspeech import Model
+from transformers import pipeline
 import wave
 import os
-from transformers import pipeline
+from vosk import Model, KaldiRecognizer
+import librosa
+import json
 import urllib.request
 import subprocess
 import sys
@@ -13,13 +15,9 @@ import sys
 summarizer = pipeline("summarization")
 sentiment_analyzer = pipeline("sentiment-analysis")
 
-# Define URLs for DeepSpeech model and scorer
-DEEPSPEECH_MODEL_URL = 'https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.pbmm'
-DEEPSPEECH_SCORER_URL = 'https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.scorer'
-
-# Model paths
-DEEPSPEECH_MODEL_PATH = 'deepspeech-0.9.3-models.pbmm'
-DEEPSPEECH_SCORER_PATH = 'deepspeech-0.9.3-models.scorer'
+# Define URLs for Vosk model
+VOSK_MODEL_URL = 'https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip'
+VOSK_MODEL_PATH = 'vosk-model-small-en-us-0.15.zip'
 
 # Function to download the model if it doesn't exist
 def download_model(model_url, model_path):
@@ -38,13 +36,20 @@ except ImportError:
     install_package("librosa")
     import librosa
 
-def load_deepspeech_model():
+def load_vosk_model():
     # Ensure the model is downloaded
-    download_model(DEEPSPEECH_MODEL_URL, DEEPSPEECH_MODEL_PATH)
-    download_model(DEEPSPEECH_SCORER_URL, DEEPSPEECH_SCORER_PATH)
+    download_model(VOSK_MODEL_URL, VOSK_MODEL_PATH)
     
-    model = Model(DEEPSPEECH_MODEL_PATH)
-    model.enableExternalScorer(DEEPSPEECH_SCORER_PATH)
+    # Unzip the model if it isn't unzipped already
+    if not os.path.exists('vosk-model-small-en-us-0.15'):
+        st.write("Unzipping the Vosk model...")
+        from zipfile import ZipFile
+        with ZipFile(VOSK_MODEL_PATH, 'r') as zip_ref:
+            zip_ref.extractall()
+        st.write("Unzipping complete!")
+
+    # Load the Vosk model
+    model = Model("vosk-model-small-en-us-0.15")
     return model
 
 def transcribe_audio(model, audio_file):
@@ -55,15 +60,24 @@ def transcribe_audio(model, audio_file):
     temp_filename = 'temp_audio.wav'
     librosa.output.write_wav(temp_filename, audio_data, 16000)
     
-    # Read the temporary wav file
-    with wave.open(temp_filename, 'rb') as f:
-        frames = f.readframes(f.getnframes())
-        audio = np.frombuffer(frames, dtype=np.int16)
+    # Read the temporary wav file for Vosk processing
+    wf = wave.open(temp_filename, "rb")
+    recognizer = KaldiRecognizer(model, wf.getframerate())
     
-    # Perform speech-to-text conversion
-    text = model.stt(audio)
+    # Process audio in chunks and recognize
+    result = ''
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if recognizer.AcceptWaveform(data):
+            result += recognizer.Result()
+    
+    # Get final transcription result
+    result = json.loads(result)
+    transcription = result.get('text', '')
     os.remove(temp_filename)  # Clean up temporary file
-    return text
+    return transcription
 
 def analyze_text(text):
     # Summarize the transcript
@@ -97,8 +111,8 @@ def main():
         st.audio(uploaded_file, format='audio/wav')
         st.write("Processing your file...")
         
-        # Initialize the DeepSpeech model
-        model = load_deepspeech_model()
+        # Initialize the Vosk model
+        model = load_vosk_model()
         
         # Convert audio to text
         transcript = transcribe_audio(model, uploaded_file)
