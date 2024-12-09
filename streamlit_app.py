@@ -1,71 +1,81 @@
 import streamlit as st
 import whisper
-from pyannote.audio import Pipeline
-import google.generativeai as genai
-import os
-import urllib.request
+from transformers import pipeline
+import pandas as pd
+import io
 
-# Configure the API key securely from Streamlit's secrets
-genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
+# Function to load Whisper model
+def load_whisper_model():
+    model = whisper.load_model("base")  # You can choose different model sizes
+    return model
 
-# Initialize Whisper model
-model = whisper.load_model("base")  # You can choose from "tiny", "base", "small", "medium", "large"
+# Function to convert audio file to text using Whisper
+def audio_to_text(audio_file):
+    model = load_whisper_model()
+    # Save the uploaded file as a temporary file
+    with open("temp.wav", "wb") as f:
+        f.write(audio_file.getbuffer())
 
-# Initialize speaker diarization pipeline (will automatically download models)
-diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization")
-
-def transcribe_audio_whisper(audio_file):
-    result = model.transcribe(audio_file)
+    # Transcribe the audio file to text
+    result = model.transcribe("temp.wav")
     return result['text']
 
-def diarize_audio(audio_file):
-    diarization = diarization_pipeline({'uri': 'filename', 'audio': audio_file})
-    return diarization
+# Function to analyze the transcript with Hugging Face Transformers (e.g., summarization, score generation)
+def analyze_transcript(text):
+    summarizer = pipeline("summarization")
+    score_generator = pipeline("text-classification", model="facebook/bart-large-mnli")  # You can replace with your custom model for scoring
 
-def label_conversation(diarization, transcript):
-    labeled_conversation = []
-    for segment in diarization.itertracks(yield_label=True):
-        start, end, speaker = segment
-        segment_text = extract_text_for_segment(transcript, start, end)
-        labeled_conversation.append(f"{speaker}: {segment_text}")
-    
-    return labeled_conversation
+    # Generate summary
+    summary = summarizer(text, max_length=200, min_length=50, do_sample=False)
 
-def extract_text_for_segment(transcript, start, end):
-    return transcript[start:end]
+    # Generate support score (can be customized to more specific scoring logic)
+    score = score_generator(text)
 
-def analyze_text_with_gemini(text):
-    prompt = f"Analyze the following text: {text}. Provide a summary, identify key points, and suggest potential insights or actions."
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    response = model.generate_content(prompt)
-    return response.text
+    return summary[0]['summary_text'], score[0]['label'], score[0]['score']
 
-# Streamlit app
-st.title("Audio Transcription, Speaker Identification, and AI Analysis")
-uploaded_file = st.file_uploader("Choose an audio file", type=["wav", "mp3"])
+# Streamlit App Interface
+def main():
+    st.title("Call Recording Analysis")
 
-if uploaded_file is not None:
-    with open("temp_audio.wav", "wb") as f:
-        f.write(uploaded_file.read())
+    # Upload audio file (only WAV format)
+    audio_file = st.file_uploader("Upload Call Recording (WAV format)", type=["wav"])
 
-    # Perform speaker diarization
-    diarization = diarize_audio("temp_audio.wav")
+    if audio_file is not None:
+        # Display uploaded file name
+        st.write(f"Uploaded file: {audio_file.name}")
 
-    # Transcribe audio to text using Whisper
-    transcript = transcribe_audio_whisper("temp_audio.wav")
-    
-    # Label the conversation with the identified speakers
-    labeled_conversation = label_conversation(diarization, transcript)
-    
-    st.write("Labeled Conversation:")
-    for line in labeled_conversation:
-        st.write(line)
+        # Convert audio to text
+        with st.spinner("Converting audio to text..."):
+            transcript = audio_to_text(audio_file)
+        
+        st.subheader("Transcript")
+        st.write(transcript)  # Show the transcript of the call
 
-    try:
-        # Join labeled conversation into a single text for analysis
-        conversation_text = "\n".join(labeled_conversation)
-        analysis_result = analyze_text_with_gemini(conversation_text)
-        st.write("AI Analysis:")
-        st.write(analysis_result)
-    except Exception as e:
-        st.error(f"Error: {e}")
+        # Analyze the transcript (summarization and score)
+        with st.spinner("Analyzing the call..."):
+            summary, score_label, score_value = analyze_transcript(transcript)
+        
+        st.subheader("Call Summary")
+        st.write(summary)  # Show the summary of the call
+        
+        st.subheader("Agent Performance Score")
+        st.write(f"Score Label: {score_label}, Score Value: {score_value}")
+
+        # Display some basic metrics (for example, word count, speaking time, etc.)
+        word_count = len(transcript.split())
+        st.write(f"Word Count: {word_count}")
+
+        # Optionally, you can create a DataFrame to display metrics
+        metrics = {
+            "Word Count": [word_count],
+            "Summary": [summary],
+            "Score": [score_label],
+            "Score Value": [score_value]
+        }
+
+        metrics_df = pd.DataFrame(metrics)
+        st.subheader("Agent Metrics")
+        st.dataframe(metrics_df)
+
+if __name__ == "__main__":
+    main()
