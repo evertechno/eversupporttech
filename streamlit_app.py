@@ -6,16 +6,32 @@ from deepspeech import Model
 import wave
 import os
 from transformers import pipeline
+import urllib.request
 
 # Set up Hugging Face for text summarization and sentiment analysis
 summarizer = pipeline("summarization")
 sentiment_analyzer = pipeline("sentiment-analysis")
 
-# Load the DeepSpeech model (make sure to download a pre-trained model first)
+# Define URLs for DeepSpeech model and scorer
+DEEPSPEECH_MODEL_URL = 'https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.pbmm'
+DEEPSPEECH_SCORER_URL = 'https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.scorer'
+
+# Model paths
 DEEPSPEECH_MODEL_PATH = 'deepspeech-0.9.3-models.pbmm'
 DEEPSPEECH_SCORER_PATH = 'deepspeech-0.9.3-models.scorer'
 
+# Function to download the model if it doesn't exist
+def download_model(model_url, model_path):
+    if not os.path.exists(model_path):
+        st.write(f"Downloading model from {model_url}...")
+        urllib.request.urlretrieve(model_url, model_path)
+        st.write("Download complete!")
+
 def load_deepspeech_model():
+    # Ensure the model is downloaded
+    download_model(DEEPSPEECH_MODEL_URL, DEEPSPEECH_MODEL_PATH)
+    download_model(DEEPSPEECH_SCORER_URL, DEEPSPEECH_SCORER_PATH)
+    
     model = Model(DEEPSPEECH_MODEL_PATH)
     model.enableExternalScorer(DEEPSPEECH_SCORER_PATH)
     return model
