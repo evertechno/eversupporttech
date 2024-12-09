@@ -3,4 +3,4 @@ deepspeech
 transformers
 pandas
 numpy
-librosa
+librosa 
