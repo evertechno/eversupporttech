@@ -1,7 +1,5 @@
 import streamlit as st
-import deepspeech
-import wave
-import numpy as np
+import whisper
 from pyannote.audio import Pipeline
 import google.generativeai as genai
 import os
@@ -10,41 +8,15 @@ import urllib.request
 # Configure the API key securely from Streamlit's secrets
 genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
 
-# Paths for the DeepSpeech model files (we will automatically download them if not present)
-DEEPSPEECH_MODEL_PATH = "deepspeech-0.9.3-models.pbmm"
-DEEPSPEECH_SCORER_PATH = "deepspeech-0.9.3-models.scorer"
-
-# URL for downloading the DeepSpeech model and scorer file
-DEEPSPEECH_MODEL_URL = "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.pbmm"
-DEEPSPEECH_SCORER_URL = "https://github.com/mozilla/DeepSpeech/releases/download/v0.9.3/deepspeech-0.9.3-models.scorer"
-
-# Ensure DeepSpeech models are downloaded
-def download_deepspeech_models():
-    if not os.path.exists(DEEPSPEECH_MODEL_PATH):
-        st.write("Downloading DeepSpeech model...")
-        urllib.request.urlretrieve(DEEPSPEECH_MODEL_URL, DEEPSPEECH_MODEL_PATH)
-
-    if not os.path.exists(DEEPSPEECH_SCORER_PATH):
-        st.write("Downloading DeepSpeech scorer file...")
-        urllib.request.urlretrieve(DEEPSPEECH_SCORER_URL, DEEPSPEECH_SCORER_PATH)
-
-# Download DeepSpeech models if they don't exist
-download_deepspeech_models()
-
-# Initialize DeepSpeech model
-def transcribe_audio_deepspeech(audio_file):
-    model = deepspeech.Model(DEEPSPEECH_MODEL_PATH)
-    model.enableExternalScorer(DEEPSPEECH_SCORER_PATH)
-
-    with wave.open(audio_file, 'rb') as wf:
-        frames = wf.readframes(wf.getnframes())
-        audio = np.frombuffer(frames, dtype=np.int16)
-
-    text = model.stt(audio)
-    return text
+# Initialize Whisper model
+model = whisper.load_model("base")  # You can choose from "tiny", "base", "small", "medium", "large"
 
 # Initialize speaker diarization pipeline (will automatically download models)
 diarization_pipeline = Pipeline.from_pretrained("pyannote/speaker-diarization")
+
+def transcribe_audio_whisper(audio_file):
+    result = model.transcribe(audio_file)
+    return result['text']
 
 def diarize_audio(audio_file):
     diarization = diarization_pipeline({'uri': 'filename', 'audio': audio_file})
@@ -79,8 +51,8 @@ if uploaded_file is not None:
     # Perform speaker diarization
     diarization = diarize_audio("temp_audio.wav")
 
-    # Transcribe audio to text
-    transcript = transcribe_audio_deepspeech("temp_audio.wav")
+    # Transcribe audio to text using Whisper
+    transcript = transcribe_audio_whisper("temp_audio.wav")
     
     # Label the conversation with the identified speakers
     labeled_conversation = label_conversation(diarization, transcript)
